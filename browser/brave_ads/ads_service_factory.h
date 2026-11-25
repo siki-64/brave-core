@@ -40,9 +40,6 @@ class AdsServiceFactory final : public BrowserContextKeyedServiceFactory {
 
   ~AdsServiceFactory() override;
 
-  // Returns the interface type: on Android there is no implementation (the
-  // desktop-only AdsTooltipsController is not compiled), and naming the
-  // concrete type made non-LTO Android builds fail to link.
   std::unique_ptr<AdsTooltipsDelegate> CreateAdsTooltipsDelegate() const;
   std::unique_ptr<ShutdownMonitor> CreateShutdownMonitor() const;
 
