@@ -17,6 +17,8 @@ import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.base.SplitCompatApplication;
 import org.chromium.chrome.browser.settings.BraveSearchEngineUtils;
+import org.chromium.chrome.browser.tv.BraveTvActivityHooks;
+import org.chromium.chrome.browser.tv.BraveTvUtils;
 import org.chromium.chrome.browser.util.BraveProfileUtils;
 import org.chromium.chrome.browser.vpn.utils.BraveVpnProfileUtils;
 import org.chromium.components.safe_browsing.BraveSafeBrowsingApiHandler;
@@ -32,6 +34,10 @@ public class BraveApplicationImplBase extends SplitCompatApplication.Impl {
     public void onCreate() {
         super.onCreate();
         if (SplitCompatApplication.isBrowserProcess()) {
+            // Brave TV: arrow-key link navigation on TVs (needs to precede native init).
+            BraveTvUtils.maybeAppendTvSwitches(getApplication());
+            // Brave TV: remote pointer on every Brave screen, not only the browser.
+            BraveTvActivityHooks.install(getApplication());
             // Handle Mojo BadMessageException gracefully by closing the pipe instead of
             // crashing. This matches the C++ behavior in Connector::DispatchMessage
             // (mojo/public/cpp/bindings/lib/connector.cc) where a failed Accept() calls

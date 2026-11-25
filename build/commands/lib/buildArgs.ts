@@ -239,6 +239,8 @@ export function getBuildArgs(config: Config) {
       args.android_channel = 'canary'
       args.chrome_public_manifest_package = 'com.brave.browser_nightly'
     }
+    // Brave TV: own package ID so it installs next to regular Brave.
+    args.chrome_public_manifest_package = 'local.bravetv'
     // exclude_unwind_tables is inherited form upstream and is false for any
     // Android build
 

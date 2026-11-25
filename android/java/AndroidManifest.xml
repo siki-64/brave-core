@@ -192,3 +192,16 @@
 <activity android:name="org.chromium.chrome.browser.searchwidget.SearchWidgetProviderActivity"
     android:theme="@style/Theme.Chromium.SearchActivity"
     android:exported="true"/>
+
+<!-- Brave TV: entry on the Android TV / Google TV home screen. -->
+<activity-alias
+    android:name="org.chromium.chrome.browser.tv.BraveTvLauncher"
+    android:targetActivity="org.chromium.chrome.browser.document.ChromeLauncherActivity"
+    android:label="@string/brave_tv_app_name"
+    android:banner="@drawable/brave_tv_banner"
+    android:exported="true">
+    <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+    </intent-filter>
+</activity-alias>

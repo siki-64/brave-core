@@ -4028,6 +4028,22 @@ If you don't accept this request, VPN will not reconnect and your internet conne
     <message name="IDS_PERMISSIONS_GEOLOCATION_APPROXIMATE" desc="Radio button label for approximate location in the permission prompt.">
       Approximate
     </message>
+      <!-- Brave TV -->
+      <message name="IDS_BRAVE_TV_APP_NAME" desc="Name of the browser on the TV home screen." translateable="false">
+        Brave TV
+      </message>
+      <message name="IDS_BRAVE_TV_CURSOR_ON" desc="Toast shown when the TV remote pointer is turned on.">
+        Pointer on: arrows move, OK clicks
+      </message>
+      <message name="IDS_BRAVE_TV_CURSOR_OFF" desc="Toast shown when the TV remote pointer is turned off.">
+        Pointer off: arrows jump between links
+      </message>
+      <message name="IDS_BRAVE_TV_MENU_USE_LINK_NAVIGATION" desc="App menu item on TV that turns the remote pointer off.">
+        Use arrow-key link navigation
+      </message>
+      <message name="IDS_BRAVE_TV_MENU_USE_POINTER" desc="App menu item on TV that turns the remote pointer on.">
+        Use remote pointer
+      </message>
   </messages>
   </release>
 </grit>
