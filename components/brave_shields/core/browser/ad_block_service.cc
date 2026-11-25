@@ -220,8 +220,14 @@ AdBlockService::AdBlockService(
           component_update_service_);
 
   const bool debug_mode = IsDebugMode();
-  use_dat_cache_ =
-      base::FeatureList::IsEnabled(features::kAdblockDATCache) && !debug_mode;
+  // Brave TV: lists come from public subscriptions (no update-server key), and
+  // the DAT cache startup path assumes component-delivered lists; skip it so
+  // engines are always built from the subscribed lists.
+  const bool brave_tv_public_adblock =
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
+          "brave-tv-public-adblock");
+  use_dat_cache_ = base::FeatureList::IsEnabled(features::kAdblockDATCache) &&
+                   !debug_mode && !brave_tv_public_adblock;
   if (!use_dat_cache_) {
     LOG(WARNING) << "DAT caching is disabled. Debug mode" << debug_mode
                  << "Extra CPU and memory usage are expected.";

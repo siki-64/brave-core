@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/check.h"
+#include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
@@ -156,7 +157,14 @@ AdBlockComponentServiceManager::AdBlockComponentServiceManager(
   // without DAT cache, the pre-existing startup-suppression flag is
   // sufficient and we want to avoid changing behavior for users not on
   // the new path.
-  if (base::FeatureList::IsEnabled(features::kAdblockDATCache)) {
+  // Brave TV: builds without Brave's update-server key never receive the list
+  // catalog component (HTTP 403), so the gates would never open and no engine
+  // would ever be built. Lists then come from public subscriptions instead.
+  const bool brave_tv_public_adblock =
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
+          "brave-tv-public-adblock");
+  if (base::FeatureList::IsEnabled(features::kAdblockDATCache) &&
+      !brave_tv_public_adblock) {
     default_gate_ = std::make_unique<ComponentProvidersGate>(
         true, filters_provider_manager_);
     additional_gate_ = std::make_unique<ComponentProvidersGate>(

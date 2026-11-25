@@ -34,6 +34,8 @@ brave_java_sources = [
   "../../brave/android/java/org/chromium/chrome/browser/BraveIntentHandler.java",
   "../../brave/android/java/org/chromium/chrome/browser/BraveIntentHandlerInternal.java",
   "../../brave/android/java/org/chromium/chrome/browser/BraveLandscapeHelper.java",
+  "../../brave/android/java/org/chromium/chrome/browser/tv/BraveTvActivityHooks.java",
+  "../../brave/android/java/org/chromium/chrome/browser/tv/BraveTvAdblockBootstrap.java",
   "../../brave/android/java/org/chromium/chrome/browser/tv/BraveTvCursorController.java",
   "../../brave/android/java/org/chromium/chrome/browser/tv/BraveTvCursorView.java",
   "../../brave/android/java/org/chromium/chrome/browser/tv/BraveTvShieldsDefaults.java",

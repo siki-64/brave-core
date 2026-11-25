@@ -12,6 +12,8 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 
 import org.chromium.base.CommandLine;
+
+import java.io.File;
 import org.chromium.base.ContextUtils;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.profiles.ProfileManager;
@@ -74,7 +76,26 @@ public final class BraveTvUtils {
         if (!commandLine.hasSwitch(SPATIAL_NAVIGATION_SWITCH)) {
             commandLine.appendSwitch(SPATIAL_NAVIGATION_SWITCH);
         }
+        // Ad blocking from public lists (see BraveTvAdblockBootstrap): don't wait for the
+        // Brave-update-server list catalog, which this build cannot download.
+        if (!commandLine.hasSwitch(PUBLIC_ADBLOCK_SWITCH)) {
+            commandLine.appendSwitch(PUBLIC_ADBLOCK_SWITCH);
+        }
+        File resourcesDir = BraveTvAdblockBootstrap.prepareResourcesDir(context);
+        if (resourcesDir != null && !commandLine.hasSwitch(ADBLOCK_RESOURCES_DIR_SWITCH)) {
+            commandLine.appendSwitchWithValue(
+                    ADBLOCK_RESOURCES_DIR_SWITCH, resourcesDir.getAbsolutePath());
+        }
     }
+
+    /**
+     * Native fallback location for the ad-block resources library (scriptlets); see
+     * brave/components/brave_shields/core/browser/ad_block_default_resource_provider.cc.
+     */
+    static final String ADBLOCK_RESOURCES_DIR_SWITCH = "brave-tv-adblock-resources-dir";
+
+    /** Native: build ad-block engines from subscriptions without the component catalog. */
+    static final String PUBLIC_ADBLOCK_SWITCH = "brave-tv-public-adblock";
 
     private static SharedPreferences prefs() {
         return ContextUtils.getApplicationContext()

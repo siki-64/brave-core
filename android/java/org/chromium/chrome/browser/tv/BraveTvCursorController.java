@@ -9,11 +9,13 @@ import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.util.Log;
 import android.view.Choreographer;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -45,6 +47,12 @@ public class BraveTvCursorController implements Choreographer.FrameCallback {
     private static final float MAX_SCROLL_TICKS = 40f;
     private static final float PAGE_SCROLL_TICKS = 10f;
     private static final long HIDE_DELAY_MS = 5000;
+    // A quick arrow tap against a screen edge scrolls this many wheel ticks.
+    private static final float TAP_SCROLL_TICKS = 3f;
+    // Touch-drag scrolling: lift the finger after this long without scrolling.
+    private static final long SWIPE_IDLE_END_MS = 250;
+    private static final long SWIPE_SETTLE_MS = 120;
+    private static final String TAG = "BraveTvCursor";
     // Gamepad analog sticks.
     private static final float STICK_DEADZONE = 0.18f;
     private static final float STICK_MAX_SPEED_DP = 1300f;
@@ -70,6 +78,14 @@ public class BraveTvCursorController implements Choreographer.FrameCallback {
     private long mTouchDownTime = -1;
     private float mPendingH;
     private float mPendingV;
+    private final String mScrollMode = readScrollMode();
+    private final float mScrollFactorPx;
+    private final Runnable mEndSwipeRunnable = this::endSwipe;
+    private int mScrollLogCount;
+    private boolean mSwipeActive;
+    private long mSwipeDownTime;
+    private float mSwipeX;
+    private float mSwipeY;
     private float mStickX;
     private float mStickY;
     private float mScrollStickX;
@@ -84,6 +100,7 @@ public class BraveTvCursorController implements Choreographer.FrameCallback {
         mDecor = (ViewGroup) activity.getWindow().getDecorView();
         mContentViewSupplier = contentViewSupplier;
         mDensity = activity.getResources().getDisplayMetrics().density;
+        mScrollFactorPx = ViewConfiguration.get(activity).getScaledVerticalScrollFactor();
         mView = new BraveTvCursorView(activity);
         mView.setVisibility(View.INVISIBLE);
         mView.setElevation(10000f);
@@ -132,6 +149,9 @@ public class BraveTvCursorController implements Choreographer.FrameCallback {
     /** Releases held keys; call when the window loses focus (menus, dialogs, other apps). */
     public void resetInputState() {
         mUp = mDown = mLeft = mRight = false;
+        mStickX = mStickY = mScrollStickX = mScrollStickY = 0;
+        mPendingH = mPendingV = 0;
+        endSwipe();
         if (mTouchDownTime >= 0) {
             injectTouch(MotionEvent.ACTION_CANCEL);
         }
@@ -184,6 +204,7 @@ public class BraveTvCursorController implements Choreographer.FrameCallback {
                             return true;
                         }
                         show();
+                        endSwipe();
                         injectTouch(MotionEvent.ACTION_DOWN);
                         mView.setCursorPressed(true);
                     }
@@ -234,8 +255,11 @@ public class BraveTvCursorController implements Choreographer.FrameCallback {
             if (!wasHeld) {
                 mHoldStartNanos = System.nanoTime();
                 mLastFrameNanos = mHoldStartNanos;
-                // Nudge one step immediately so single taps give precise movement.
-                moveBy(stepX() * 6 * mDensity, stepY() * 6 * mDensity, 0, 0);
+                // Nudge one step immediately so single taps give precise movement; a tap
+                // against a screen edge scrolls a little.
+                moveBy(stepX() * 6 * mDensity, stepY() * 6 * mDensity, TAP_SCROLL_TICKS,
+                        TAP_SCROLL_TICKS);
+                flushScroll(true);
             }
             ensureFrameLoop();
         } else if (!isAnyDirectionHeld() && !isStickActive()) {
@@ -452,18 +476,145 @@ public class BraveTvCursorController implements Choreographer.FrameCallback {
 
     private void flushScroll(boolean force) {
         if (!force && Math.abs(mPendingH) < 0.5f && Math.abs(mPendingV) < 0.5f) return;
-        if (mPendingH == 0 && mPendingV == 0) return;
-        ensurePosition();
-        float[] target = scrollTarget();
-        long now = SystemClock.uptimeMillis();
-        MotionEvent event =
-                obtain(now, now, MotionEvent.ACTION_SCROLL, target[0], target[1],
-                        InputDevice.SOURCE_MOUSE, MotionEvent.TOOL_TYPE_MOUSE, mPendingH,
-                        mPendingV);
-        mActivity.dispatchGenericMotionEvent(event);
-        event.recycle();
+        if (mPendingH == 0 && mPendingV == 0) {
+            if (force) endSwipe();
+            return;
+        }
+        float h = mPendingH;
+        float v = mPendingV;
         mPendingH = 0;
         mPendingV = 0;
+        // Never scroll in the middle of an OK press (click / drag in progress).
+        if (mTouchDownTime >= 0) return;
+        ensurePosition();
+        float[] target = scrollTarget();
+
+        boolean handled = false;
+        if (!"swipe".equals(mScrollMode)) {
+            handled = dispatchWheel(target[0], target[1], h, v);
+        }
+        if (!handled && !"wheel".equals(mScrollMode)) {
+            swipeBy(target[0], target[1], h, v);
+            handled = true;
+            if (force) endSwipe();
+        }
+        if (mScrollLogCount < 20) {
+            mScrollLogCount++;
+            Log.i(TAG, "scroll mode=" + mScrollMode + " h=" + h + " v=" + v + " handled="
+                    + handled + " swipe=" + mSwipeActive);
+        }
+    }
+
+    /**
+     * Mouse wheel event straight to the page's view. Going through the activity lets
+     * Chrome's compositor layers route (and sometimes drop) it; the page view itself
+     * forwards wheel events to Blink.
+     */
+    private boolean dispatchWheel(float x, float y, float h, float v) {
+        long now = SystemClock.uptimeMillis();
+        MotionEvent event =
+                obtain(now, now, MotionEvent.ACTION_SCROLL, x, y, InputDevice.SOURCE_MOUSE,
+                        MotionEvent.TOOL_TYPE_MOUSE, h, v);
+        boolean handled = false;
+        View content = mContentViewSupplier.get();
+        if (content != null && content.isShown()) {
+            int[] loc = new int[2];
+            content.getLocationInWindow(loc);
+            event.offsetLocation(-loc[0], -loc[1]);
+            handled = content.dispatchGenericMotionEvent(event);
+            event.offsetLocation(loc[0], loc[1]);
+        }
+        if (!handled) handled = mActivity.dispatchGenericMotionEvent(event);
+        event.recycle();
+        return handled;
+    }
+
+    /**
+     * Scrolls with a touch drag, the input every Android page reliably understands. While the
+     * pointer keeps pushing against an edge, one drag stays open and moves a little every
+     * frame (smooth, no repeated taps); {@link #endSwipe} lifts the finger after holding still
+     * so the page does not fling.
+     */
+    private void swipeBy(float x, float y, float h, float v) {
+        // Positive AXIS_VSCROLL scrolls toward the top, i.e. the finger moves down.
+        float dx = -h * mScrollFactorPx;
+        float dy = v * mScrollFactorPx;
+        long now = SystemClock.uptimeMillis();
+        if (!mSwipeActive) {
+            mSwipeActive = true;
+            mSwipeDownTime = now;
+            mSwipeX = x;
+            mSwipeY = y;
+            dispatchSwipe(MotionEvent.ACTION_DOWN, now);
+        }
+        float[] bounds = contentBounds();
+        float nx = mSwipeX + dx;
+        float ny = mSwipeY + dy;
+        if (nx < bounds[0] || nx > bounds[2] || ny < bounds[1] || ny > bounds[3]) {
+            // The finger would leave the page: lift it and start a new drag from the middle.
+            endSwipe();
+            float cx = (bounds[0] + bounds[2]) / 2f;
+            float cy = (bounds[1] + bounds[3]) / 2f;
+            swipeBy(cx, cy, h, v);
+            return;
+        }
+        mSwipeX = nx;
+        mSwipeY = ny;
+        dispatchSwipe(MotionEvent.ACTION_MOVE, now);
+        mHandler.removeCallbacks(mEndSwipeRunnable);
+        mHandler.postDelayed(mEndSwipeRunnable, SWIPE_IDLE_END_MS);
+    }
+
+    private void endSwipe() {
+        mHandler.removeCallbacks(mEndSwipeRunnable);
+        if (!mSwipeActive) return;
+        // Hold still before lifting so the gesture ends with zero velocity (no fling).
+        long t = SystemClock.uptimeMillis() + SWIPE_SETTLE_MS;
+        dispatchSwipe(MotionEvent.ACTION_MOVE, t);
+        dispatchSwipe(MotionEvent.ACTION_UP, t);
+        mSwipeActive = false;
+    }
+
+    private void dispatchSwipe(int action, long eventTime) {
+        MotionEvent event =
+                obtain(mSwipeDownTime, eventTime, action, mSwipeX, mSwipeY,
+                        InputDevice.SOURCE_TOUCHSCREEN, MotionEvent.TOOL_TYPE_FINGER, 0, 0);
+        mActivity.dispatchTouchEvent(event);
+        event.recycle();
+    }
+
+    /** Page area in window coordinates: {left, top, right, bottom}, inset a little. */
+    private float[] contentBounds() {
+        View content = mContentViewSupplier.get();
+        float inset = 24 * mDensity;
+        if (content == null || !content.isShown() || content.getWidth() == 0) {
+            return new float[] {
+                inset, inset, mDecor.getWidth() - inset, mDecor.getHeight() - inset
+            };
+        }
+        int[] loc = new int[2];
+        content.getLocationInWindow(loc);
+        return new float[] {
+            loc[0] + inset,
+            loc[1] + inset,
+            loc[0] + content.getWidth() - inset,
+            loc[1] + content.getHeight() - inset
+        };
+    }
+
+    /** Debug switch: adb shell setprop debug.bravetv.scroll wheel|swipe|auto */
+    private static String readScrollMode() {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[] {"getprop", "debug.bravetv.scroll"});
+            try (java.io.BufferedReader r =
+                    new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
+                String value = r.readLine();
+                if (value != null && !value.trim().isEmpty()) return value.trim();
+            }
+        } catch (Exception e) {
+            // Fall through to the default.
+        }
+        return "auto";
     }
 
     /**

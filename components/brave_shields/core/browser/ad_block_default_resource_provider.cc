@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "base/command_line.h"
 #include "base/files/file_path.h"
 #include "base/task/thread_pool.h"
 #include "brave/components/brave_component_updater/browser/dat_file_util.h"
@@ -16,6 +17,13 @@
 namespace {
 
 constexpr char kAdBlockResourcesFilename[] = "resources.json";
+
+// Brave TV: directory holding a resources.json that the TV app ships and keeps
+// up to date from Brave's public adblock-resources repository. Builds without
+// Brave's update-server key never receive the resources component (HTTP 403),
+// which would leave scriptlets (e.g. YouTube ad blocking) without resources.
+constexpr char kBraveTvAdblockResourcesDirSwitch[] =
+    "brave-tv-adblock-resources-dir";
 
 }  // namespace
 
@@ -32,6 +40,16 @@ AdBlockDefaultResourceProvider::AdBlockDefaultResourceProvider(
       cus,
       base::BindRepeating(&AdBlockDefaultResourceProvider::OnComponentReady,
                           weak_factory_.GetWeakPtr()));
+
+  // Brave TV fallback (see kBraveTvAdblockResourcesDirSwitch). If the real
+  // component ever arrives, OnComponentReady() replaces this path with it.
+  const base::CommandLine& command_line =
+      *base::CommandLine::ForCurrentProcess();
+  if (component_path_.empty() &&
+      command_line.HasSwitch(kBraveTvAdblockResourcesDirSwitch)) {
+    OnComponentReady(
+        command_line.GetSwitchValuePath(kBraveTvAdblockResourcesDirSwitch));
+  }
 }
 
 AdBlockDefaultResourceProvider::~AdBlockDefaultResourceProvider() = default;

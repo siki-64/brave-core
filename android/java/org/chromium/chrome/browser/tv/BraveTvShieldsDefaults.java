@@ -60,8 +60,12 @@ public final class BraveTvShieldsDefaults {
 
     private BraveTvShieldsDefaults() {}
 
-    /** Call after native init on TV. Does nothing once applied. */
+    /** Call after native init on TV. One-time defaults apply once; the bootstrap every start. */
     public static void maybeApply() {
+        // Filter lists and scriptlet resources from their public sources (Brave's update
+        // server does not serve this build). Cheap after the first start.
+        BraveTvAdblockBootstrap.run();
+
         SharedPreferences prefs =
                 ContextUtils.getApplicationContext()
                         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
