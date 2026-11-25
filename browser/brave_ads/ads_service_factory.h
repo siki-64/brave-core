@@ -20,7 +20,7 @@ class NoDestructor;
 namespace brave_ads {
 
 class AdsService;
-class AdsTooltipsDelegateImpl;
+class AdsTooltipsDelegate;
 class ShutdownMonitor;
 
 // Singleton that owns all AdsService and associates them with Profiles.
@@ -40,7 +40,10 @@ class AdsServiceFactory final : public BrowserContextKeyedServiceFactory {
 
   ~AdsServiceFactory() override;
 
-  std::unique_ptr<AdsTooltipsDelegateImpl> CreateAdsTooltipsDelegate() const;
+  // Returns the interface type: on Android there is no implementation (the
+  // desktop-only AdsTooltipsController is not compiled), and naming the
+  // concrete type made non-LTO Android builds fail to link.
+  std::unique_ptr<AdsTooltipsDelegate> CreateAdsTooltipsDelegate() const;
   std::unique_ptr<ShutdownMonitor> CreateShutdownMonitor() const;
 
   // BrowserContextKeyedServiceFactory:
