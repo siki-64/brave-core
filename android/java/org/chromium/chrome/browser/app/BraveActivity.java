@@ -26,7 +26,9 @@ import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -211,6 +213,9 @@ import org.chromium.chrome.browser.theme.BraveAccentColorBridge;
 import org.chromium.chrome.browser.toolbar.BraveToolbarManager;
 import org.chromium.chrome.browser.toolbar.bottom.BottomToolbarConfiguration;
 import org.chromium.chrome.browser.toolbar.top.BraveToolbarLayoutImpl;
+import org.chromium.chrome.browser.tv.BraveTvCursorController;
+import org.chromium.chrome.browser.tv.BraveTvShieldsDefaults;
+import org.chromium.chrome.browser.tv.BraveTvUtils;
 import org.chromium.chrome.browser.ui.RootUiCoordinator;
 import org.chromium.chrome.browser.ui.appmenu.AppMenuPropertiesDelegate;
 import org.chromium.chrome.browser.ui.browser_window.ChromeAndroidTask;
@@ -346,6 +351,8 @@ public abstract class BraveActivity extends ChromeActivity
     private KeyringService mKeyringService;
     private JsonRpcService mJsonRpcService;
     private MiscAndroidMetrics mMiscAndroidMetrics;
+    // Brave TV: remote-controlled pointer (null when not on a TV).
+    private @Nullable BraveTvCursorController mTvCursorController;
     @Nullable private WalletModel mWalletModel;
     private BlockchainRegistry mBlockchainRegistry;
     private TxService mTxService;
@@ -501,6 +508,10 @@ public abstract class BraveActivity extends ChromeActivity
             @Nullable MotionEventInfo triggeringMotion) {
         final Tab currentTab = getActivityTab();
         // Handle items replaced by Brave.
+        if (id == R.id.brave_tv_cursor_id) {
+            if (mTvCursorController != null) mTvCursorController.toggle();
+            return true;
+        }
         if (id == R.id.reload_menu_id) {
             setComesFromNewTab(true);
         } else if (id == R.id.preferences_id) {
@@ -600,8 +611,44 @@ public abstract class BraveActivity extends ChromeActivity
         initWalletNativeServices();
     }
 
+    // Brave TV: the remote pointer sees keys before the page and the toolbar.
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (mTvCursorController != null && mTvCursorController.dispatchKeyEvent(event)) {
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    // Brave TV: gamepad analog sticks move the pointer and scroll.
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        if (mTvCursorController != null && mTvCursorController.dispatchGenericMotionEvent(event)) {
+            return true;
+        }
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus && mTvCursorController != null) {
+            mTvCursorController.resetInputState();
+        }
+    }
+
+    /** Brave TV: the remote pointer, or null when not running on a TV. */
+    public @Nullable BraveTvCursorController getTvCursorController() {
+        return mTvCursorController;
+    }
+
     @Override
     protected void onDestroyInternal() {
+        // Brave TV
+        if (mTvCursorController != null) {
+            mTvCursorController.destroy();
+            mTvCursorController = null;
+        }
         // If the search widget promo panel is shown, we mark its visibility
         // before the activity is destroyed and recreated (e.g when the night mode state changes).
         // The new search widget promo panel will be recreated with the new appropriate theme and
@@ -1153,6 +1200,17 @@ public abstract class BraveActivity extends ChromeActivity
     public void performPostInflationStartup() {
         super.performPostInflationStartup();
 
+        // Brave TV
+        if (BraveTvUtils.isTv(this)) {
+            mTvCursorController =
+                    new BraveTvCursorController(
+                            this,
+                            () -> {
+                                Tab tab = getActivityTab();
+                                return tab != null ? tab.getView() : null;
+                            });
+        }
+
         createNotificationChannel();
     }
 
@@ -1266,6 +1324,12 @@ public abstract class BraveActivity extends ChromeActivity
         BraveAccentColorBridge.update(this);
 
         super.finishNativeInitialization();
+
+        // Brave TV: desktop layouts on the big screen, and stronger ad blocking.
+        if (BraveTvUtils.isTv(this)) {
+            BraveTvUtils.maybeApplyDesktopSiteDefault();
+            BraveTvShieldsDefaults.maybeApply();
+        }
 
         boolean isFirstInstall = PackageUtils.isFirstInstall(this);
 

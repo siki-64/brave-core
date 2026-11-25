@@ -62,6 +62,7 @@ import org.chromium.chrome.browser.toolbar.ToolbarManager;
 import org.chromium.chrome.browser.toolbar.bottom.BottomToolbarConfiguration;
 import org.chromium.chrome.browser.toolbar.menu_button.BraveMenuButtonCoordinator;
 import org.chromium.chrome.browser.toolbar.top.BraveToolbarLayoutImpl;
+import org.chromium.chrome.browser.tv.BraveTvUtils;
 import org.chromium.chrome.browser.ui.appmenu.AppMenuDelegate;
 import org.chromium.chrome.browser.ui.appmenu.AppMenuHandler;
 import org.chromium.chrome.browser.ui.appmenu.AppMenuHandler.AppMenuItemType;
@@ -1047,6 +1048,14 @@ public class BraveTabbedAppMenuPropertiesDelegate extends TabbedAppMenuPropertie
         }
         putShareIconIntoIconRow(modelList);
 
+        // Brave TV: switch between the remote pointer and arrow-key link navigation.
+        if (BraveTvUtils.isTv(mContext)) {
+            addMenuItemAfter(
+                    modelList,
+                    buildBraveTvCursorItem(),
+                    Arrays.asList(R.id.request_desktop_site_id, R.id.find_in_page_id));
+        }
+
         // Shred
         if (ChromeFeatureList.isEnabled(BraveFeatureList.BRAVE_SHRED)) {
             Tab tab = mActivityTabProvider.get();
@@ -1204,6 +1213,20 @@ public class BraveTabbedAppMenuPropertiesDelegate extends TabbedAppMenuPropertie
                                 ? org.chromium.brave.browser.customize_menu.R.drawable
                                         .ic_window_screwdriver
                                 : 0,
+                        isMenuIconAtStart()));
+    }
+
+    private MVCListAdapter.ListItem buildBraveTvCursorItem() {
+        return new MVCListAdapter.ListItem(
+                AppMenuHandler.AppMenuItemType.STANDARD,
+                AppMenuItemUtils.buildModelForStandardMenuItem(
+                        mContext,
+                        mAppMenuItemTheme,
+                        R.id.brave_tv_cursor_id,
+                        BraveTvUtils.isCursorEnabled()
+                                ? R.string.brave_tv_menu_use_link_navigation
+                                : R.string.brave_tv_menu_use_pointer,
+                        0,
                         isMenuIconAtStart()));
     }
 
